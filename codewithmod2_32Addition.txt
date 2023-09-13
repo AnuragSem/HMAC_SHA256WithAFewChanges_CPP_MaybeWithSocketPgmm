@@ -1,0 +1,410 @@
+#include<iostream>
+#include<string>
+#include<vector>
+#include<iomanip>
+#include <bitset>
+using namespace std;
+
+class SHA256
+{
+    protected:
+    vector<uint32_t> hashDigestInWords;
+    vector<uint8_t> hashDigestInBytes;
+    vector<uint32_t>W;
+    vector<uint32_t>K{0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+                    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+                    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+                    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+                    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+                    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+                    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+                    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+    uint32_t a,b,c,d,e,f,g,h;
+    uint32_t temp1,temp2;
+    uint32_t h0 = 0x6a09e667;
+    uint32_t h1 = 0xbb67ae85;
+    uint32_t h2 = 0x3c6ef372;
+    uint32_t h3 = 0xa54ff53a;
+    uint32_t h4 = 0x510e527f;
+    uint32_t h5 = 0x9b05688c;
+    uint32_t h6 = 0x1f83d9ab;
+    uint32_t h7 = 0x5be0cd19;
+    uint64_t pow2_32 = 0b100000000000000000000000000000000;
+    
+    void Padding0sToByteVector(vector<uint8_t>& padVec)
+    {
+        int n = 64 - padVec.size();
+        for(int i=0;i<n;i++)
+        {
+            padVec.push_back(0x00);
+        }
+    }
+    
+    void PaddingLast64BitsToByteVector(int msgLen,vector<uint8_t>& padVec)
+    {
+        int messageLengthInBits=msgLen*8;
+        cout<<endl<<messageLengthInBits<<endl<<endl;
+        for(int i=0;i<8;i++)
+        {
+            if(i==7)
+            {
+                padVec.push_back((uint8_t)messageLengthInBits);
+                continue;
+            }
+            padVec.push_back(0x00);
+        }
+    }
+    
+    void Padding48More0sToWordVec(vector<uint32_t>& W)
+    {
+        for(int i=0;i<48;++i)
+        {
+            W.push_back(0x0000);
+        }
+    }
+    
+    void ConvertFrom8TO32Bytes(vector<uint8_t> vec8byte,vector<uint32_t>& destination32)
+    {
+        for (uint8_t i = 0, j = 0; i < 16; i++, j += 4)
+        { 
+            uint32_t t=(vec8byte[j] << 24) | (vec8byte[j + 1] << 16) | (vec8byte[j + 2] << 8) | (vec8byte[j + 3]);
+		    destination32.push_back(t);
+	    }
+    }
+    
+    void ConvertFrom32To8Bytes(vector<uint32_t> vec32,vector<uint8_t> &vec8)
+    {
+        uint32_t temp;
+        for(int i=0;i<vec32.size();i++)
+        {
+            temp=vec32[i];
+            vec32[i]=vec32[i]>>24;
+            vec8.push_back(vec32[i]);
+            
+            vec32[i]=temp;
+            vec32[i]=vec32[i]<<8;
+            vec32[i]=vec32[i]>>24;
+            vec8.push_back(vec32[i]);
+            
+            vec32[i]=temp;
+            vec32[i]=vec32[i]<<16;
+            vec32[i]=vec32[i]>>24;
+            vec8.push_back(vec32[i]);
+            
+            vec32[i]=temp;
+            vec8.push_back(vec32[i]);
+        }
+    }
+    
+    const uint32_t RightRotate(const uint32_t &n, const uint32_t &x)
+    {
+        return (x >> n) | (x << (32 - n));
+    }
+    
+    const uint32_t ShiftRight(const uint32_t &n, const uint32_t &x)
+    {
+        return x >> n;
+    }
+    
+    const uint32_t SchedulingSigma0(const uint32_t &x)
+    {
+        return RightRotate(7, x) ^ RightRotate(18, x) ^ ShiftRight(3, x);
+    }
+    
+    const uint32_t SchedulingSigma1(const uint32_t &x)
+    {
+        return RightRotate(17, x) ^ RightRotate(19, x) ^ ShiftRight(10, x);
+    }
+    
+    void MessageScheduling(vector<uint32_t>& W)
+    {
+        for(int i=16;i<64;i++)
+        {
+            W[i]=(W[i-16] + SchedulingSigma0(W[i-15]) + W[i-7] + SchedulingSigma1(W[i-2]))%pow2_32;
+        }
+    }
+    
+    const uint32_t Maj(const uint32_t &x, const uint32_t &y, const uint32_t &z)
+    {
+        return (x & y) ^ (x & z) ^ (y & z);
+    }
+    
+    const uint32_t Ch(const uint32_t &x, const uint32_t &y, const uint32_t &z)
+    {
+        return (x & y) ^ (~x & z);
+    }
+    
+    const uint32_t CompressionSigma0(const uint32_t &x)
+    {
+        return RightRotate(2, x) ^ RightRotate(13, x) ^ RightRotate(22, x);
+    }
+    
+    const uint32_t CompressionSigma1(const uint32_t &x)
+    {
+        return RightRotate(6, x) ^ RightRotate(11, x) ^ RightRotate(25, x);
+    }
+    
+    void Compression(vector<uint32_t>& W)
+    {
+        a=h0;
+        b=h1;
+        c=h2;
+        d=h3;
+        e=h4;
+        f=h5;
+        g=h6;
+        h=h7;
+        
+        for(int i=0;i<64;i++)
+        {
+            temp1 = (h + CompressionSigma1(e) + Ch(e,f,g) + K[i] + W[i])%pow2_32;
+            temp2 = (CompressionSigma0(a) + Maj(a,b,c))%pow2_32;
+            h = g;
+            g = f;
+            f = e;
+            e = (d + temp1)%pow2_32;
+            d = c;
+            c = b;
+            b = a;
+            a = (temp1 + temp2)%pow2_32;
+        }
+        h0 =(h0 + a)%pow2_32;
+        h1 =(h1 + b)%pow2_32;
+        h2 =(h2 + c)%pow2_32;
+        h3 =(h3 + d)%pow2_32;
+        h4 =(h4 + e)%pow2_32;
+        h5 =(h5 + f)%pow2_32;
+        h6 =(h6 + g)%pow2_32;
+        h7 =(h7 + h)%pow2_32;
+    }
+    
+    void StoreHashInWordVec()
+    {
+        hashDigestInWords.push_back(h0);
+        hashDigestInWords.push_back(h1);
+        hashDigestInWords.push_back(h2);
+        hashDigestInWords.push_back(h3);
+        hashDigestInWords.push_back(h4);
+        hashDigestInWords.push_back(h5);
+        hashDigestInWords.push_back(h6);
+        hashDigestInWords.push_back(h7);
+    }
+    
+    
+    void DisplayByteVectorInBinary(vector<uint8_t> ByteVec)
+    {
+        int counter =0;
+        for(uint8_t x: ByteVec)
+        {
+        counter++;
+        cout<<bitset<8>{x} <<' ';
+        if(counter==8)
+            {
+                cout<<endl;
+                counter=0;
+            }
+        }
+    }
+    
+    void DisplayWordsInBinary(vector<uint32_t> vecWord)
+    {
+        int counter =0;
+        for(uint32_t x: vecWord)
+        {
+        counter++;
+        cout<<bitset<32>{x} <<' ';
+        if(counter==2)
+            {
+                cout<<endl;
+                counter=0;
+            }
+        }
+    }
+  
+};
+
+class KEYMANIP
+{
+	protected:
+		string key;
+		int keyLen;
+        
+        vector<uint8_t> keyBytes;
+        
+        vector<uint8_t> kIn;
+        vector<uint8_t> kOut;
+        
+        void GeneratKInKOut()
+        {
+            vector<uint8_t> ipad(64,0x36);
+            vector<uint8_t> opad(64,0x5C);
+            
+            for(int i=0;i<64;i++)
+            {
+                uint8_t temp;
+                //for inner 
+                temp=keyBytes[i]^ipad[i];
+                kIn.push_back(temp);
+                //for outer
+                temp=keyBytes[i]^opad[i];
+                kOut.push_back(temp);
+            }
+        }
+        
+
+	public:
+	void CheckKeyLength()
+	{
+		cout << keyLen << endl;
+		if (key.length() != 64)
+		{
+			cout << "Invalid key" << endl << "Enter Key again" << endl;
+			SetKey();
+		}
+	}
+
+	void SetKey()
+	{
+		cin >> key;
+		keyLen = key.length();
+		CheckKeyLength();
+	}
+		
+
+};
+
+class HMAC:public KEYMANIP,public SHA256
+{
+    
+    private:
+    string msg;
+    int msgLen;
+    vector<uint8_t> msgBytes;
+    vector<uint8_t> appendedBytes;
+    vector<vector<uint8_t>> messageBlocks;
+    
+    void ConvertTObytes(string str,vector<uint8_t>& destinationVec)
+    {
+        vector<uint8_t> tempBytes(str.begin(),str.end());
+        destinationVec=tempBytes;
+    }
+    
+    void AppendVectors(vector<uint8_t> source1,vector<uint8_t> source2,vector<uint8_t> &destination)
+    {
+        destination.insert(destination.end(),source1.begin(),source1.end());
+        destination.insert(destination.end(),source2.begin(),source2.end());
+    }
+    
+    void SplitVectors(vector<uint8_t>origVec,vector<vector<uint8_t>>& destination)
+    {
+        int size = 64;
+        int n = (origVec.size() - 1)/size + 1;
+        auto itr = origVec.cbegin();
+        while (n>0)
+        {
+            if(itr+64 > origVec.cend())
+            {
+                destination.emplace_back(vector<uint8_t>{itr, origVec.cend()});
+                n--;
+                continue;
+            }
+            destination.emplace_back(vector<uint8_t>{itr, itr+64});
+            n--;
+            itr=itr+64;
+        }
+        
+    }
+    
+    public:
+    HMAC(string strKey, string strMsg)
+	{
+		key = strKey;
+		msg = strMsg;
+		keyLen = key.length();
+		msgLen = msg.length();
+		CheckKeyLength();
+	}
+
+	void DisplayByteVectorInHex(vector<uint8_t>& hexVec)
+    {
+        cout<< setfill('0');
+        cout<<endl;
+        for(uint8_t x: hexVec)
+        {
+            cout << hex << (int)x;
+        }
+        cout<<dec<<endl;
+    }
+    
+    void ResetHashComponents()
+    {
+        h0 = 0x6a09e667;
+        h1 = 0xbb67ae85;
+        h2 = 0x3c6ef372;
+        h3 = 0xa54ff53a;
+        h4 = 0x510e527f;
+        h5 = 0x9b05688c;
+        h6 = 0x1f83d9ab;
+        h7 = 0x5be0cd19;
+        appendedBytes.clear();
+        messageBlocks.clear();
+        hashDigestInWords.clear();//can call in start(after the first calc Hash) if want to keep the final hash value in word vec too
+        
+    }
+	
+	void CalcHMAC(vector<uint8_t>& keyPart,vector<uint8_t> messagePart)
+	{
+	    AppendVectors(keyPart,messagePart,appendedBytes);
+	    hashDigestInBytes.clear();
+	    SplitVectors(appendedBytes,messageBlocks);
+	    for(int i=0;i<messageBlocks.size();i++)
+	    {
+	        if(messageBlocks[i].size()<64)
+	        {
+	            Padding0sToByteVector(messageBlocks[i]);
+	        }
+	        ConvertFrom8TO32Bytes(messageBlocks[i],W);
+	        Padding48More0sToWordVec(W);
+	        MessageScheduling(W); 
+	        Compression(W);
+	        W.clear();
+	    }
+	    StoreHashInWordVec();
+	    ConvertFrom32To8Bytes(hashDigestInWords,hashDigestInBytes);
+	    ResetHashComponents();
+
+	}
+	
+	void Start()
+	{
+
+	    //Key manipulation part
+	    ConvertTObytes(key,keyBytes);
+	    GeneratKInKOut();
+	    
+	    //Message manipulation part
+	    ConvertTObytes(msg,msgBytes);
+	    
+	    //hashCalculation part
+	    CalcHMAC(kIn,msgBytes);
+	    CalcHMAC(kOut,hashDigestInBytes);
+	    
+	    //displaying result
+	    DisplayByteVectorInHex(hashDigestInBytes);
+	    
+	}
+};
+
+int main()
+{
+    string key="1234567890123456789012345678901234567890123456789012345678901234";
+    // cout<<"enter key 64 chars"<<endl;
+    // getline(cin,key);
+    string msg;
+    cout<<"enter message"<<endl;
+    getline(cin,msg);
+    
+    
+    HMAC h(key,msg);
+    h.Start();
+}
